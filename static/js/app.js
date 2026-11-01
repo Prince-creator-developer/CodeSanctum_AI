@@ -1,11 +1,12 @@
 /**
  * CodeSanctum AI - DevSecOps Cockpit Frontend Controller
- * Features: Multi-agent orchestration, interactive onboarding tour, audio feedback, AST tree, and verification proofs.
+ * Features: Multi-agent orchestration, interactive narrated guided demo with browser voice and visual arrow callouts.
  */
 
 let currentScenarioId = "cwe-89-sqli";
 let isCustomMode = false;
 let soundEnabled = true;
+let isGuidedTourActive = false;
 
 // State store
 let appState = {
@@ -46,7 +47,7 @@ const astTreePanel = document.getElementById("ast-tree-panel");
 const btnSoundToggle = document.getElementById("btn-sound-toggle");
 const iconSound = document.getElementById("icon-sound");
 
-// Modals
+// Modals & Narrator Overlay Elements
 const guideModal = document.getElementById("guide-modal");
 const btnOpenGuide = document.getElementById("btn-open-guide");
 const btnCloseGuide = document.getElementById("btn-close-guide");
@@ -55,6 +56,18 @@ const btnStartGuidedDemo = document.getElementById("btn-start-guided-demo");
 const cvssModal = document.getElementById("cvss-modal");
 const btnCvssModal = document.getElementById("btn-cvss-modal");
 const btnCloseCvss = document.getElementById("btn-close-cvss");
+
+const narratorOverlay = document.getElementById("narrator-overlay");
+const narratorStageTitle = document.getElementById("narrator-stage-title");
+const narratorSubtitle = document.getElementById("narrator-subtitle");
+const narratorArrowCallout = document.getElementById("narrator-arrow-callout");
+const narratorArrowText = document.getElementById("narrator-arrow-text");
+const btnStopNarrator = document.getElementById("btn-stop-narrator");
+
+// Target Panels for Spotlight Highlights
+const panelCodeStudio = document.getElementById("panel-code-studio");
+const panelAgentOps = document.getElementById("panel-agent-ops");
+const panelDiffSandbox = document.getElementById("panel-diff-sandbox");
 
 // Web Audio API Synthesizer for Cyber Haptic Beeps
 let audioCtx = null;
@@ -73,8 +86,29 @@ function playCyberBeep(freq = 600, type = "sine", duration = 0.08) {
         gain.connect(audioCtx.destination);
         osc.start();
         osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {}
+}
+
+/**
+ * Text-to-Speech Voice Engine (speaks instructions aloud)
+ */
+function speakVoice(text) {
+    if (!soundEnabled || !('speechSynthesis' in window)) return;
+    try {
+        window.speechSynthesis.cancel(); // Stop any pending speech
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.lang = 'en-US';
+
+        // Prefer natural female English voice if available
+        const voices = window.speechSynthesis.getVoices();
+        const naturalVoice = voices.find(v => (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('Zira')) && v.lang.startsWith('en'));
+        if (naturalVoice) utterance.voice = naturalVoice;
+
+        window.speechSynthesis.speak(utterance);
     } catch (e) {
-        // Audio policy fallback
+        console.warn("Speech synthesis fallback", e);
     }
 }
 
@@ -82,7 +116,6 @@ function playCyberBeep(freq = 600, type = "sine", duration = 0.08) {
 document.addEventListener("DOMContentLoaded", () => {
     appState.code = codeEditor.value;
 
-    // Auto-open guide on first load if not previously dismissed
     if (!localStorage.getItem("codesanctum_guide_seen")) {
         guideModal.classList.remove("hidden");
         guideModal.classList.add("flex");
@@ -98,7 +131,6 @@ document.addEventListener("DOMContentLoaded", () => {
     btnSandbox.addEventListener("click", () => runStep3Sandbox());
     btnExportDossier.addEventListener("click", () => exportPdfDossier());
 
-    // Guide Modal Listeners
     btnOpenGuide.addEventListener("click", () => {
         guideModal.classList.remove("hidden");
         guideModal.classList.add("flex");
@@ -112,10 +144,11 @@ document.addEventListener("DOMContentLoaded", () => {
         guideModal.classList.remove("flex");
         guideModal.classList.add("hidden");
         localStorage.setItem("codesanctum_guide_seen", "true");
-        runFullAutoHealPipeline();
+        launchNarratedGuidedTour();
     });
 
-    // CVSS Modal Listeners
+    btnStopNarrator.addEventListener("click", () => stopGuidedTour());
+
     btnCvssModal.addEventListener("click", () => {
         cvssModal.classList.remove("hidden");
         cvssModal.classList.add("flex");
@@ -125,7 +158,6 @@ document.addEventListener("DOMContentLoaded", () => {
         cvssModal.classList.add("hidden");
     });
 
-    // Sound Toggle
     btnSoundToggle.addEventListener("click", () => {
         soundEnabled = !soundEnabled;
         if (soundEnabled) {
@@ -135,15 +167,14 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
             btnSoundToggle.classList.remove("text-cyan-300");
             btnSoundToggle.classList.add("text-slate-600");
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
         }
     });
 
-    // AST Tree Toggle
     btnToggleAstTree.addEventListener("click", () => {
         astTreePanel.classList.toggle("hidden");
     });
 
-    // Copy Patched Code
     btnCopyPatch.addEventListener("click", () => {
         if (!appState.blue_team || !appState.blue_team.patched_code) {
             logToTerminal("[CLIPBOARD] Run Step 2 or Auto-Heal first to generate patch.", "system");
@@ -154,7 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
         playCyberBeep(920, "sine", 0.05);
     });
 
-    // Copy Cryptographic Attestation
     btnCopyAttestation.addEventListener("click", () => {
         if (!appState.auditor) {
             logToTerminal("[CLIPBOARD] Complete audit pipeline first to generate attestation.", "system");
@@ -487,6 +517,99 @@ async function runFullAutoHealPipeline() {
         btnRunAll.innerHTML = `<i data-lucide="play" class="w-4 h-4 fill-white inline mr-1"></i> Auto-Heal Pipeline (1-Click)`;
         lucide.createIcons();
     }
+}
+
+/**
+ * ============================================================================
+ * INTERACTIVE NARRATED GUIDED TOUR ENGINE (Voice + Arrow Callout + Spotlight)
+ * ============================================================================
+ */
+async function launchNarratedGuidedTour() {
+    isGuidedTourActive = true;
+    narratorOverlay.classList.remove("hidden");
+
+    // Helper to clear spotlights
+    function clearSpotlights() {
+        panelCodeStudio.classList.remove("ring-4", "ring-cyan-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+        panelAgentOps.classList.remove("ring-4", "ring-cyan-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+        panelDiffSandbox.classList.remove("ring-4", "ring-emerald-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+        btnExportDossier.classList.remove("ring-4", "ring-blue-400", "glow-active");
+    }
+
+    try {
+        // --- STEP 1: Code Ingestion & AST Analysis ---
+        clearSpotlights();
+        panelCodeStudio.classList.add("ring-4", "ring-cyan-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+        
+        narratorStageTitle.innerText = "Step 1: Code Ingestion & AST Decomposition";
+        narratorSubtitle.innerText = "Red-Team Sentinel parses the Abstract Syntax Tree. Notice the dangerous SQL f-string highlighted at line 3 with a 9.8 Critical CVSS score!";
+        narratorArrowCallout.innerHTML = `<i data-lucide="arrow-left" class="w-3.5 h-3.5 animate-bounce"></i> <span>Look at Panel 1 (Left): Dangerous f-string identified at Line 3</span>`;
+        lucide.createIcons();
+
+        speakVoice("Step 1. Red-Team Sentinel is analyzing the Abstract Syntax Tree. Notice the dangerous S-Q-L f-string highlighted at line 3.");
+        await runStep1Analyze();
+        await new Promise(r => setTimeout(r, 4500));
+        if (!isGuidedTourActive) return;
+
+        // --- STEP 2: Multi-Agent Synthesis ---
+        clearSpotlights();
+        panelAgentOps.classList.add("ring-4", "ring-cyan-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+
+        narratorStageTitle.innerText = "Step 2: Autonomous Patch Synthesis";
+        narratorSubtitle.innerText = "Blue-Team Aegis takes the exploit model and autonomously synthesizes a surgical AST patch with parameterized database query bindings.";
+        narratorArrowCallout.innerHTML = `<i data-lucide="arrow-up" class="w-3.5 h-3.5 animate-bounce"></i> <span>Look at Panel 2 (Center): Blue-Team synthesizing surgical patch</span>`;
+        lucide.createIcons();
+
+        speakVoice("Step 2. Blue-Team Aegis is now synthesizing a surgical A-S-T patch with parameterized driver bindings.");
+        await runStep2Patch();
+        await new Promise(r => setTimeout(r, 4500));
+        if (!isGuidedTourActive) return;
+
+        // --- STEP 3: Sandbox Verification & Zero Regression ---
+        clearSpotlights();
+        panelDiffSandbox.classList.add("ring-4", "ring-emerald-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+
+        narratorStageTitle.innerText = "Step 3: Dual-Phase Sandbox Verification";
+        narratorSubtitle.innerText = "The sandbox executes: unpatched code is exploited, patched code blocks the attack, and all regression tests pass! CVSS drops to 0.0!";
+        narratorArrowCallout.innerHTML = `<i data-lucide="arrow-right" class="w-3.5 h-3.5 animate-bounce"></i> <span>Look at Panel 3 (Right): Attack neutralized, 100% tests passed</span>`;
+        lucide.createIcons();
+
+        speakVoice("Step 3. Isolated Sandbox executes verification. Unpatched code was exploited, but patched code blocked the attack with zero regressions.");
+        await runStep3Sandbox();
+        await new Promise(r => setTimeout(r, 5000));
+        if (!isGuidedTourActive) return;
+
+        // --- STEP 4: Auditor Veritas Seal & PDF ---
+        clearSpotlights();
+        btnExportDossier.classList.add("ring-4", "ring-blue-400", "glow-active");
+
+        narratorStageTitle.innerText = "Step 4: Cryptographic SHA-256 Attestation & PDF Dossier";
+        narratorSubtitle.innerText = "Auditor Veritas has certified the fix with a tamper-evident SHA-256 seal. You can now download the official executive PDF dossier!";
+        narratorArrowCallout.innerHTML = `<i data-lucide="arrow-down" class="w-3.5 h-3.5 animate-bounce"></i> <span>Click below to download the signed Executive PDF Dossier</span>`;
+        lucide.createIcons();
+
+        speakVoice("Step 4. Auditor Veritas has certified the fix and signed the cryptographic S-H-A 256 seal. Your executive dossier is ready.");
+        await new Promise(r => setTimeout(r, 4500));
+
+    } catch (e) {
+        console.error("Tour error", e);
+    } finally {
+        // Leave narrator open with wrap-up info
+        narratorStageTitle.innerText = "Tour Completed Successfully!";
+        narratorSubtitle.innerText = "The vulnerability is 100% remediated. Click any scenario pill at the top to test other vulnerability classes!";
+        narratorArrowCallout.innerHTML = `<i data-lucide="check-circle" class="w-3.5 h-3.5 text-emerald-400"></i> <span class="text-emerald-300 font-semibold">Self-Healing Loop Complete</span>`;
+        lucide.createIcons();
+    }
+}
+
+function stopGuidedTour() {
+    isGuidedTourActive = false;
+    narratorOverlay.classList.add("hidden");
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    panelCodeStudio.classList.remove("ring-4", "ring-cyan-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+    panelAgentOps.classList.remove("ring-4", "ring-cyan-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+    panelDiffSandbox.classList.remove("ring-4", "ring-emerald-400", "ring-offset-4", "ring-offset-slate-900", "glow-active");
+    btnExportDossier.classList.remove("ring-4", "ring-blue-400", "glow-active");
 }
 
 /**
