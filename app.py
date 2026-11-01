@@ -9,7 +9,7 @@ import sys
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -41,15 +41,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static and templates
+# Static and Templates Directories
 static_dir = os.path.join(CURRENT_DIR, "static")
 templates_dir = os.path.join(CURRENT_DIR, "templates")
 
-os.makedirs(static_dir, exist_ok=True)
-os.makedirs(templates_dir, exist_ok=True)
+# Try to mount static files if directory exists
+if os.path.exists(static_dir):
+    try:
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    except Exception as e:
+        print(f"Static mounting notice: {e}")
 
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
-templates = Jinja2Templates(directory=templates_dir)
+# Templates setup
+try:
+    templates = Jinja2Templates(directory=templates_dir)
+except Exception as e:
+    templates = None
+    print(f"Templates initialization notice: {e}")
 
 # Models
 class CodeAnalyzeRequest(BaseModel):
@@ -76,17 +84,60 @@ class ExportDossierRequest(BaseModel):
     sandbox: Dict[str, Any]
     auditor: Dict[str, Any]
 
+# Fallback static asset endpoints (ensures Vercel serverless always serves CSS/JS)
+@app.get("/static/css/style.css")
+async def get_css():
+    css_file = os.path.join(static_dir, "css", "style.css")
+    if os.path.exists(css_file):
+        with open(css_file, "r", encoding="utf-8") as f:
+            return Response(content=f.read(), media_type="text/css")
+    return Response(content="/* CSS fallback */", media_type="text/css")
+
+@app.get("/static/js/app.js")
+async def get_js():
+    js_file = os.path.join(static_dir, "js", "app.js")
+    if os.path.exists(js_file):
+        with open(js_file, "r", encoding="utf-8") as f:
+            return Response(content=f.read(), media_type="application/javascript")
+    return Response(content="/* JS fallback */", media_type="application/javascript")
+
 # Routes
 @app.get("/", response_class=HTMLResponse)
 async def serve_index(request: Request):
     """Serve the main DevSecOps interactive cockpit."""
     scenarios = get_scenario_list()
     default_scenario = get_scenario_by_id("cwe-89-sqli")
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "scenarios": scenarios,
-        "default_scenario": default_scenario
-    })
+    
+    if templates:
+        try:
+            return templates.TemplateResponse("index.html", {
+                "request": request,
+                "scenarios": scenarios,
+                "default_scenario": default_scenario
+            })
+        except Exception:
+            pass
+
+    # Direct HTML fallback if template rendering encounters serverless path issues
+    html_path = os.path.join(templates_dir, "index.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            content = f.read()
+            # Replace basic Jinja template loops for standalone rendering
+            pills_html = ""
+            for sc in scenarios:
+                active_class = "bg-cyan-950/70 text-cyan-300 border-cyan-700/80 shadow-sm shadow-cyan-900/50" if sc["id"] == "cwe-89-sqli" else "bg-slate-900/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
+                pills_html += f'<button onclick="selectScenario(\'{sc["id"]}\')" data-scenario-id="{sc["id"]}" class="scenario-pill px-3 py-1 rounded-md text-xs font-mono transition-all border {active_class}">{sc["cwe"]}</button>\n'
+            
+            # Simple fallback replacements
+            if "{% for sc in scenarios %}" in content:
+                loop_start = content.find("{% for sc in scenarios %}")
+                loop_end = content.find("{% endfor %}") + len("{% endfor %}")
+                content = content[:loop_start] + pills_html + content[loop_end:]
+            content = content.replace("{{ default_scenario.vulnerable_code }}", default_scenario["vulnerable_code"])
+            return HTMLResponse(content=content)
+
+    return HTMLResponse("<h1>CodeSanctum AI is Online</h1><p>Visit /api/health</p>")
 
 @app.get("/api/health")
 async def health_check():
