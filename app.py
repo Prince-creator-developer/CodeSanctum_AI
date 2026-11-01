@@ -9,7 +9,7 @@ import sys
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, Dict, Any, List
@@ -30,7 +30,8 @@ from core.report_generator import report_generator
 app = FastAPI(
     title="CodeSanctum AI - Autonomous DevSecOps Engine",
     description="Autonomous Multi-Agent Zero-Day Vulnerability Hunter & Self-Healing DevSecOps Engine",
-    version="1.0.0"
+    version="1.0.0",
+    redirect_slashes=False
 )
 
 app.add_middleware(
@@ -84,8 +85,9 @@ class ExportDossierRequest(BaseModel):
     sandbox: Dict[str, Any]
     auditor: Dict[str, Any]
 
-# Fallback static asset endpoints (ensures Vercel serverless always serves CSS/JS)
+# Static asset endpoints
 @app.get("/static/css/style.css")
+@app.get("/css/style.css")
 async def get_css():
     css_file = os.path.join(static_dir, "css", "style.css")
     if os.path.exists(css_file):
@@ -94,6 +96,7 @@ async def get_css():
     return Response(content="/* CSS fallback */", media_type="text/css")
 
 @app.get("/static/js/app.js")
+@app.get("/js/app.js")
 async def get_js():
     js_file = os.path.join(static_dir, "js", "app.js")
     if os.path.exists(js_file):
@@ -101,8 +104,12 @@ async def get_js():
             return Response(content=f.read(), media_type="application/javascript")
     return Response(content="/* JS fallback */", media_type="application/javascript")
 
-# Routes
+# Web Frontend Routes (handles all Vercel root and proxy variants)
 @app.get("/", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
+@app.get("/api/", response_class=HTMLResponse)
+@app.get("/api/index", response_class=HTMLResponse)
+@app.get("/api/index.py", response_class=HTMLResponse)
 async def serve_index(request: Request):
     """Serve the main DevSecOps interactive cockpit."""
     scenarios = get_scenario_list()
@@ -123,13 +130,11 @@ async def serve_index(request: Request):
     if os.path.exists(html_path):
         with open(html_path, "r", encoding="utf-8") as f:
             content = f.read()
-            # Replace basic Jinja template loops for standalone rendering
             pills_html = ""
             for sc in scenarios:
                 active_class = "bg-cyan-950/70 text-cyan-300 border-cyan-700/80 shadow-sm shadow-cyan-900/50" if sc["id"] == "cwe-89-sqli" else "bg-slate-900/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200"
                 pills_html += f'<button onclick="selectScenario(\'{sc["id"]}\')" data-scenario-id="{sc["id"]}" class="scenario-pill px-3 py-1 rounded-md text-xs font-mono transition-all border {active_class}">{sc["cwe"]}</button>\n'
             
-            # Simple fallback replacements
             if "{% for sc in scenarios %}" in content:
                 loop_start = content.find("{% for sc in scenarios %}")
                 loop_end = content.find("{% endfor %}") + len("{% endfor %}")
@@ -140,6 +145,7 @@ async def serve_index(request: Request):
     return HTMLResponse("<h1>CodeSanctum AI is Online</h1><p>Visit /api/health</p>")
 
 @app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """System health check endpoint."""
     return {
@@ -153,11 +159,13 @@ async def health_check():
     }
 
 @app.get("/api/scenarios")
+@app.get("/scenarios")
 async def list_scenarios():
     """Retrieve all preloaded vulnerability scenarios."""
     return {"status": "ok", "scenarios": get_scenario_list()}
 
 @app.get("/api/scenarios/{scenario_id}")
+@app.get("/scenarios/{scenario_id}")
 async def get_scenario(scenario_id: str):
     """Retrieve full details of a specific scenario."""
     sc = get_scenario_by_id(scenario_id)
@@ -166,6 +174,7 @@ async def get_scenario(scenario_id: str):
     return {"status": "ok", "scenario": sc}
 
 @app.post("/api/analyze")
+@app.post("/analyze")
 async def analyze_code(payload: CodeAnalyzeRequest):
     """Run AST parser and Red-Team threat modeling agent."""
     ast_result = ast_analyzer.analyze(payload.code)
@@ -177,18 +186,21 @@ async def analyze_code(payload: CodeAnalyzeRequest):
     }
 
 @app.post("/api/synthesize-patch")
+@app.post("/synthesize-patch")
 async def synthesize_patch(payload: PatchRequest):
     """Run Blue-Team surgical patch synthesizer and diff generator."""
     blue_result = blue_team_agent.synthesize_patch(payload.code, payload.scenario_id)
     return {"status": "ok", "blue_team": blue_result}
 
 @app.post("/api/verify-sandbox")
+@app.post("/verify-sandbox")
 async def verify_sandbox(payload: SandboxRequest):
     """Run the isolated test harness to prove exploit neutralization and zero regressions."""
     sandbox_result = sandbox_harness.execute_verification(payload.scenario_id)
     return {"status": "ok", "sandbox": sandbox_result}
 
 @app.post("/api/audit")
+@app.post("/audit")
 async def audit_remediation(payload: AuditRequest):
     """Run Auditor Veritas agent to compile compliance proof and cryptographic signature."""
     audit_result = auditor_agent.generate_audit_summary(
@@ -200,6 +212,7 @@ async def audit_remediation(payload: AuditRequest):
     return {"status": "ok", "audit": audit_result}
 
 @app.post("/api/export-dossier")
+@app.post("/export-dossier")
 async def export_dossier(payload: ExportDossierRequest):
     """Generate and download executive PDF audit dossier."""
     sc = get_scenario_by_id(payload.scenario_id) if payload.scenario_id else {}
