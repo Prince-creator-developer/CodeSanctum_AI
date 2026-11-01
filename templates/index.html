@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeSanctum AI — Autonomous Multi-Agent Zero-Day Vulnerability Hunter</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            bg: '#080c14',
+                            card: '#0f172a',
+                            border: '#1e293b',
+                            accent: '#06b6d4',
+                            red: '#ef4444',
+                            green: '#10b981',
+                            amber: '#f59e0b',
+                            blue: '#3b82f6'
+                        }
+                    },
+                    fontFamily: {
+                        mono: ['JetBrains Mono', 'Fira Code', 'Courier New', 'monospace'],
+                        sans: ['Inter', 'system-ui', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body class="bg-cyber-bg text-slate-100 font-sans antialiased min-h-screen flex flex-col">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-cyber-card/90 backdrop-blur border-b border-cyber-border px-6 py-3.5 sticky top-0 z-50 flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-emerald-500 p-0.5 shadow-lg shadow-cyan-500/20">
+                <div class="h-full w-full bg-cyber-bg rounded-[10px] flex items-center justify-center">
+                    <i data-lucide="shield-alert" class="w-5 h-5 text-cyan-400"></i>
+                </div>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-cyan-400 via-sky-300 to-emerald-400 bg-clip-text text-transparent">
+                        CodeSanctum AI
+                    </h1>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 font-mono">v1.0.0</span>
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/80 text-emerald-300 font-mono">Autonomous DevSecOps</span>
+                </div>
+                <p class="text-xs text-slate-400">Autonomous Multi-Agent Zero-Day Vulnerability Hunter & Self-Healing Engine</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <div class="hidden md:flex items-center space-x-2 text-xs bg-slate-900/90 border border-slate-800 px-3 py-1.5 rounded-lg">
+                <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-slate-300">Team: <strong class="text-white">Valerion Coders</strong></span>
+                <span class="text-slate-600">|</span>
+                <span class="text-cyan-400">HACKVERSE 2026</span>
+            </div>
+
+            <button id="btn-run-all" class="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white font-medium text-xs tracking-wide shadow-lg shadow-emerald-900/30 transition-all cursor-pointer">
+                <i data-lucide="play" class="w-4 h-4 fill-white"></i>
+                <span>Auto-Heal Pipeline (1-Click)</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Scenario Selector Bar -->
+    <div class="bg-slate-950/80 border-b border-cyber-border px-6 py-2.5 flex items-center justify-between overflow-x-auto">
+        <div class="flex items-center space-x-2 text-xs">
+            <span class="text-slate-400 font-mono uppercase tracking-wider text-[11px] mr-2 flex items-center">
+                <i data-lucide="crosshair" class="w-3.5 h-3.5 mr-1 text-cyan-400"></i> Scenarios:
+            </span>
+            <div id="scenario-pills" class="flex items-center space-x-2">
+                <!-- Dynamically populated or rendered -->
+                {% for sc in scenarios %}
+                <button 
+                    onclick="selectScenario('{{ sc.id }}')"
+                    data-scenario-id="{{ sc.id }}"
+                    class="scenario-pill px-3 py-1 rounded-md text-xs font-mono transition-all border {% if sc.id == 'cwe-89-sqli' %}bg-cyan-950/70 text-cyan-300 border-cyan-700/80 shadow-sm shadow-cyan-900/50{% else %}bg-slate-900/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200{% endif %}">
+                    {{ sc.cwe }}
+                </button>
+                {% endfor %}
+                <button 
+                    onclick="selectCustomCode()"
+                    id="pill-custom"
+                    class="scenario-pill px-3 py-1 rounded-md text-xs font-mono transition-all border bg-slate-900/60 text-slate-400 border-slate-800 hover:border-slate-700 hover:text-slate-200">
+                    <i data-lucide="code-2" class="w-3 h-3 inline mr-1"></i> Custom Code
+                </button>
+            </div>
+        </div>
+
+        <div class="hidden lg:flex items-center space-x-3 text-xs font-mono">
+            <span id="badge-cvss-initial" class="px-2.5 py-0.5 rounded bg-red-950/70 border border-red-800 text-red-300 font-semibold">
+                Initial CVSS: 9.8
+            </span>
+            <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-slate-500"></i>
+            <span id="badge-cvss-remediated" class="px-2.5 py-0.5 rounded bg-emerald-950/70 border border-emerald-800 text-emerald-300 font-semibold">
+                Post-Patch: 0.0
+            </span>
+        </div>
+    </div>
+
+    <!-- Main 3-Column Cockpit Workspace -->
+    <main class="flex-1 p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden">
+
+        <!-- Column 1: Code Studio & AST Inspector (4 cols) -->
+        <section class="lg:col-span-4 flex flex-col bg-cyber-card border border-cyber-border rounded-xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 bg-slate-900/80 border-b border-cyber-border flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="file-code-2" class="w-4 h-4 text-cyan-400"></i>
+                    <span id="current-filename" class="text-xs font-mono text-slate-200 font-semibold">services/auth_service.py</span>
+                </div>
+                <span id="current-cwe-badge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-red-950/80 border border-red-800 text-red-300">
+                    CRITICAL (CWE-89)
+                </span>
+            </div>
+
+            <!-- Code Editor Box -->
+            <div class="flex-1 flex flex-col p-3 bg-cyber-bg/95">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono mb-1.5 px-1">
+                    <span>Source Code (Python Target)</span>
+                    <span id="editor-hint" class="text-slate-500">Read-Only Preset (Switch to Custom to Edit)</span>
+                </div>
+                <div class="flex-1 relative font-mono text-xs overflow-hidden rounded-lg border border-slate-800 bg-slate-950">
+                    <textarea id="code-editor" class="w-full h-full p-3 bg-transparent text-slate-200 resize-none focus:outline-none focus:ring-1 focus:ring-cyan-500 leading-relaxed font-mono" spellcheck="false">{{ default_scenario.vulnerable_code }}</textarea>
+                </div>
+            </div>
+
+            <!-- AST Hotspots Panel -->
+            <div class="border-t border-cyber-border p-3.5 bg-slate-900/60">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center">
+                        <i data-lucide="layers" class="w-3.5 h-3.5 mr-1.5 text-cyan-400"></i> AST Security Hotspots
+                    </span>
+                    <span id="hotspots-count" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-950/80 text-red-300 border border-red-900">
+                        2 Hotspots
+                    </span>
+                </div>
+                <div id="hotspots-list" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    <!-- Hotspots populated dynamically -->
+                    <div class="p-2 rounded bg-slate-950/80 border border-red-900/40 text-[11px] flex items-start space-x-2">
+                        <span class="font-mono text-red-400 font-bold">L3:</span>
+                        <div class="flex-1 text-slate-300">
+                            <span class="font-semibold text-white">JoinedStr</span> &mdash; f-string SQL query formatting without parameter binding
+                        </div>
+                    </div>
+                    <div class="p-2 rounded bg-slate-950/80 border border-amber-900/40 text-[11px] flex items-start space-x-2">
+                        <span class="font-mono text-amber-400 font-bold">L4:</span>
+                        <div class="flex-1 text-slate-300">
+                            <span class="font-semibold text-white">Call</span> &mdash; db_cursor.execute(raw_string) execution sink
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3 pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                    <button id="btn-analyze" class="w-full flex items-center justify-center space-x-2 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs transition cursor-pointer">
+                        <i data-lucide="scan" class="w-3.5 h-3.5"></i>
+                        <span>Step 1: Parse AST & Threat Model</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Column 2: Multi-Agent Neural Operations Terminal (4 cols) -->
+        <section class="lg:col-span-4 flex flex-col bg-cyber-card border border-cyber-border rounded-xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 bg-slate-900/80 border-b border-cyber-border flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="cpu" class="w-4 h-4 text-emerald-400"></i>
+                    <span class="text-xs font-mono text-slate-200 font-semibold">Multi-Agent Neural Operations Console</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <span class="h-2 w-2 rounded-full bg-emerald-400 animate-ping"></span>
+                    <span class="text-[10px] font-mono text-emerald-400 uppercase">Live Stream</span>
+                </div>
+            </div>
+
+            <!-- Agent Roster Status Badges -->
+            <div class="grid grid-cols-3 gap-2 p-3 bg-slate-950/70 border-b border-cyber-border text-center">
+                <div id="agent-badge-red" class="p-2 rounded-lg bg-slate-900/90 border border-slate-800 transition">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Red Team</div>
+                    <div class="text-xs font-bold text-red-400 flex items-center justify-center space-x-1 mt-0.5">
+                        <i data-lucide="crosshair" class="w-3 h-3"></i>
+                        <span>Adversary</span>
+                    </div>
+                </div>
+                <div id="agent-badge-blue" class="p-2 rounded-lg bg-slate-900/90 border border-slate-800 transition">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Blue Team</div>
+                    <div class="text-xs font-bold text-cyan-400 flex items-center justify-center space-x-1 mt-0.5">
+                        <i data-lucide="shield" class="w-3 h-3"></i>
+                        <span>Patch Aegis</span>
+                    </div>
+                </div>
+                <div id="agent-badge-auditor" class="p-2 rounded-lg bg-slate-900/90 border border-slate-800 transition">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider font-mono">Auditor</div>
+                    <div class="text-xs font-bold text-emerald-400 flex items-center justify-center space-x-1 mt-0.5">
+                        <i data-lucide="check-check" class="w-3 h-3"></i>
+                        <span>Veritas</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal Output Feed -->
+            <div class="flex-1 p-3 bg-cyber-bg/95 font-mono text-xs overflow-y-auto space-y-2 flex flex-col justify-start" id="terminal-feed">
+                <div class="text-slate-500">[SYSTEM] CodeSanctum AI Multi-Agent Mesh initialized.</div>
+                <div class="text-slate-400">[READY] Waiting for code ingestion or 1-Click Auto-Heal pipeline trigger...</div>
+            </div>
+
+            <!-- Interactive Step Buttons -->
+            <div class="p-3 bg-slate-900/80 border-t border-cyber-border grid grid-cols-2 gap-2">
+                <button id="btn-patch" class="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 font-medium text-xs border border-cyan-900/50 transition cursor-pointer">
+                    <i data-lucide="wrench" class="w-3.5 h-3.5"></i>
+                    <span>Step 2: Synthesize Patch</span>
+                </button>
+                <button id="btn-sandbox" class="flex items-center justify-center space-x-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-300 font-medium text-xs border border-emerald-900/50 transition cursor-pointer">
+                    <i data-lucide="flask-conical" class="w-3.5 h-3.5"></i>
+                    <span>Step 3: Sandbox Verify</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- Column 3: Unified Diff & Sandbox Proof (4 cols) -->
+        <section class="lg:col-span-4 flex flex-col bg-cyber-card border border-cyber-border rounded-xl shadow-xl overflow-hidden">
+            <div class="px-4 py-3 bg-slate-900/80 border-b border-cyber-border flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="git-compare" class="w-4 h-4 text-cyan-400"></i>
+                    <span class="text-xs font-mono text-slate-200 font-semibold">Surgical AST Patch Diff & Verification</span>
+                </div>
+                <span id="sandbox-verdict-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                    PENDING RUN
+                </span>
+            </div>
+
+            <!-- Code Diff Container -->
+            <div class="flex-1 flex flex-col p-3 bg-cyber-bg/95 overflow-hidden">
+                <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono mb-1.5 px-1">
+                    <span>Unified Patch Diff</span>
+                    <span id="diff-stats" class="text-slate-500 font-mono">+0 / -0</span>
+                </div>
+                <div id="diff-viewer" class="flex-1 font-mono text-xs overflow-y-auto p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-300 space-y-1">
+                    <div class="text-slate-500 italic p-4 text-center">
+                        Unified patch diff will be synthesized by Blue-Team Aegis.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sandbox Results Battery Table -->
+            <div class="border-t border-cyber-border p-3.5 bg-slate-900/60 flex flex-col">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center">
+                        <i data-lucide="check-circle" class="w-3.5 h-3.5 mr-1.5 text-emerald-400"></i> Sandbox Verification Battery
+                    </span>
+                    <span id="test-summary-badge" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                        0 / 0 Tests
+                    </span>
+                </div>
+
+                <div id="sandbox-table" class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    <div class="text-[11px] text-slate-500 italic text-center py-2">
+                        Execute verification to observe live adversarial & regression test harness.
+                    </div>
+                </div>
+
+                <!-- Export PDF Dossier Action -->
+                <div class="mt-3 pt-2 border-t border-slate-800/80">
+                    <button id="btn-export-dossier" class="w-full flex items-center justify-center space-x-2 px-3 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-medium text-xs shadow-lg shadow-cyan-900/30 transition cursor-pointer">
+                        <i data-lucide="file-down" class="w-4 h-4"></i>
+                        <span>Download Executive PDF Dossier</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer Status Bar -->
+    <footer class="bg-cyber-card border-t border-cyber-border px-6 py-2 flex items-center justify-between text-xs text-slate-400 font-mono">
+        <div class="flex items-center space-x-4">
+            <span class="flex items-center space-x-1.5 text-emerald-400">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                <span>Engine: Operational</span>
+            </span>
+            <span class="text-slate-600">|</span>
+            <span>Cryptographic Integrity: <strong id="footer-hash" class="text-slate-300">SHA-256 Armed</strong></span>
+        </div>
+        <div class="flex items-center space-x-3 text-slate-500">
+            <span>Valerion Coders &copy; 2026</span>
+            <span>&bull;</span>
+            <span>Prince Kumar (Lead)</span>
+            <span>&bull;</span>
+            <span class="text-cyan-400 font-semibold">Hackverse 2026 Submission</span>
+        </div>
+    </footer>
+
+    <!-- App Scripts -->
+    <script src="/static/js/app.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>
