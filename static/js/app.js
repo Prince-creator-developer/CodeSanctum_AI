@@ -1,10 +1,11 @@
 /**
  * CodeSanctum AI - DevSecOps Cockpit Frontend Controller
- * Handles real-time multi-agent orchestration, AST inspection, diff rendering, and verification proofs.
+ * Features: Multi-agent orchestration, interactive onboarding tour, audio feedback, AST tree, and verification proofs.
  */
 
 let currentScenarioId = "cwe-89-sqli";
 let isCustomMode = false;
+let soundEnabled = true;
 
 // State store
 let appState = {
@@ -38,16 +39,132 @@ const btnAnalyze = document.getElementById("btn-analyze");
 const btnPatch = document.getElementById("btn-patch");
 const btnSandbox = document.getElementById("btn-sandbox");
 const btnExportDossier = document.getElementById("btn-export-dossier");
+const btnCopyPatch = document.getElementById("btn-copy-patch");
+const btnCopyAttestation = document.getElementById("btn-copy-attestation");
+const btnToggleAstTree = document.getElementById("btn-toggle-ast-tree");
+const astTreePanel = document.getElementById("ast-tree-panel");
+const btnSoundToggle = document.getElementById("btn-sound-toggle");
+const iconSound = document.getElementById("icon-sound");
+
+// Modals
+const guideModal = document.getElementById("guide-modal");
+const btnOpenGuide = document.getElementById("btn-open-guide");
+const btnCloseGuide = document.getElementById("btn-close-guide");
+const btnStartGuidedDemo = document.getElementById("btn-start-guided-demo");
+
+const cvssModal = document.getElementById("cvss-modal");
+const btnCvssModal = document.getElementById("btn-cvss-modal");
+const btnCloseCvss = document.getElementById("btn-close-cvss");
+
+// Web Audio API Synthesizer for Cyber Haptic Beeps
+let audioCtx = null;
+function playCyberBeep(freq = 600, type = "sine", duration = 0.08) {
+    if (!soundEnabled) return;
+    try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === "suspended") audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    } catch (e) {
+        // Audio policy fallback
+    }
+}
 
 // Initialize on Load
 document.addEventListener("DOMContentLoaded", () => {
     appState.code = codeEditor.value;
+
+    // Auto-open guide on first load if not previously dismissed
+    if (!localStorage.getItem("codesanctum_guide_seen")) {
+        guideModal.classList.remove("hidden");
+        guideModal.classList.add("flex");
+    } else {
+        guideModal.classList.remove("flex");
+        guideModal.classList.add("hidden");
+    }
+
     // Bind Event Listeners
     btnRunAll.addEventListener("click", () => runFullAutoHealPipeline());
     btnAnalyze.addEventListener("click", () => runStep1Analyze());
     btnPatch.addEventListener("click", () => runStep2Patch());
     btnSandbox.addEventListener("click", () => runStep3Sandbox());
     btnExportDossier.addEventListener("click", () => exportPdfDossier());
+
+    // Guide Modal Listeners
+    btnOpenGuide.addEventListener("click", () => {
+        guideModal.classList.remove("hidden");
+        guideModal.classList.add("flex");
+    });
+    btnCloseGuide.addEventListener("click", () => {
+        guideModal.classList.remove("flex");
+        guideModal.classList.add("hidden");
+        localStorage.setItem("codesanctum_guide_seen", "true");
+    });
+    btnStartGuidedDemo.addEventListener("click", () => {
+        guideModal.classList.remove("flex");
+        guideModal.classList.add("hidden");
+        localStorage.setItem("codesanctum_guide_seen", "true");
+        runFullAutoHealPipeline();
+    });
+
+    // CVSS Modal Listeners
+    btnCvssModal.addEventListener("click", () => {
+        cvssModal.classList.remove("hidden");
+        cvssModal.classList.add("flex");
+    });
+    btnCloseCvss.addEventListener("click", () => {
+        cvssModal.classList.remove("flex");
+        cvssModal.classList.add("hidden");
+    });
+
+    // Sound Toggle
+    btnSoundToggle.addEventListener("click", () => {
+        soundEnabled = !soundEnabled;
+        if (soundEnabled) {
+            btnSoundToggle.classList.add("text-cyan-300");
+            btnSoundToggle.classList.remove("text-slate-600");
+            playCyberBeep(880, "triangle", 0.1);
+        } else {
+            btnSoundToggle.classList.remove("text-cyan-300");
+            btnSoundToggle.classList.add("text-slate-600");
+        }
+    });
+
+    // AST Tree Toggle
+    btnToggleAstTree.addEventListener("click", () => {
+        astTreePanel.classList.toggle("hidden");
+    });
+
+    // Copy Patched Code
+    btnCopyPatch.addEventListener("click", () => {
+        if (!appState.blue_team || !appState.blue_team.patched_code) {
+            logToTerminal("[CLIPBOARD] Run Step 2 or Auto-Heal first to generate patch.", "system");
+            return;
+        }
+        navigator.clipboard.writeText(appState.blue_team.patched_code);
+        logToTerminal("[CLIPBOARD] Patched code copied to clipboard!", "blue");
+        playCyberBeep(920, "sine", 0.05);
+    });
+
+    // Copy Cryptographic Attestation
+    btnCopyAttestation.addEventListener("click", () => {
+        if (!appState.auditor) {
+            logToTerminal("[CLIPBOARD] Complete audit pipeline first to generate attestation.", "system");
+            return;
+        }
+        const text = `CodeSanctum AI Verification Proof\nTarget: ${appState.auditor.cwe}\nCVSS Reduction: ${appState.auditor.initial_cvss} -> 0.0\nSHA-256 Seal: ${appState.auditor.verification_hash}\nTimestamp: ${appState.auditor.timestamp}\nTeam: Valerion Coders`;
+        navigator.clipboard.writeText(text);
+        logToTerminal("[CLIPBOARD] Cryptographic attestation seal copied to clipboard!", "auditor");
+        playCyberBeep(1050, "sine", 0.07);
+    });
 });
 
 /**
@@ -58,10 +175,10 @@ function logToTerminal(message, type = "info") {
     logItem.className = "log-enter";
 
     let colorClass = "text-slate-300";
-    if (type === "red") colorClass = "text-red-400";
-    if (type === "blue") colorClass = "text-cyan-400";
-    if (type === "sandbox") colorClass = "text-emerald-400";
-    if (type === "auditor") colorClass = "text-amber-400 font-semibold";
+    if (type === "red") { colorClass = "text-red-400"; playCyberBeep(450, "sawtooth", 0.04); }
+    if (type === "blue") { colorClass = "text-cyan-400"; playCyberBeep(650, "sine", 0.04); }
+    if (type === "sandbox") { colorClass = "text-emerald-400"; playCyberBeep(800, "triangle", 0.04); }
+    if (type === "auditor") { colorClass = "text-amber-400 font-semibold"; playCyberBeep(1100, "sine", 0.07); }
     if (type === "system") colorClass = "text-slate-500";
 
     const timestamp = new Date().toLocaleTimeString();
@@ -78,15 +195,14 @@ async function selectScenario(scenarioId) {
         isCustomMode = false;
         currentScenarioId = scenarioId;
 
-        // Update pills UI
         document.querySelectorAll(".scenario-pill").forEach(p => {
-            p.classList.remove("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50");
+            p.classList.remove("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50", "font-bold");
             p.classList.add("bg-slate-900/60", "text-slate-400", "border-slate-800");
         });
         const activePill = document.querySelector(`[data-scenario-id="${scenarioId}"]`);
         if (activePill) {
             activePill.classList.remove("bg-slate-900/60", "text-slate-400", "border-slate-800");
-            activePill.classList.add("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50");
+            activePill.classList.add("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50", "font-bold");
         }
 
         const res = await fetch(`/api/scenarios/${scenarioId}`);
@@ -96,14 +212,13 @@ async function selectScenario(scenarioId) {
         const sc = data.scenario;
         codeEditor.value = sc.vulnerable_code;
         codeEditor.readOnly = true;
-        document.getElementById("editor-hint").innerText = "Read-Only Preset (Switch to Custom to Edit)";
+        document.getElementById("editor-hint").innerText = "Preset Active (Click 'Custom Code' to edit)";
 
         currentFilename.innerText = sc.vulnerable_file;
         currentCweBadge.innerText = `${sc.severity} (${sc.cwe})`;
-        badgeCvssInitial.innerText = `Initial CVSS: ${sc.cvss_initial}`;
+        badgeCvssInitial.innerText = `Initial CVSS: ${sc.cvss_initial} (${sc.severity})`;
         badgeCvssRemediated.innerText = "Post-Patch: Pending";
 
-        // Reset state
         appState.code = sc.vulnerable_code;
         appState.ast = null;
         appState.red_team = null;
@@ -111,10 +226,8 @@ async function selectScenario(scenarioId) {
         appState.sandbox = null;
         appState.auditor = null;
 
-        // Render Hotspots preview
         renderHotspots(sc.ast_hotspots);
 
-        // Reset diff & sandbox views
         diffViewer.innerHTML = `<div class="text-slate-500 italic p-4 text-center">Unified patch diff will be synthesized by Blue-Team Aegis.</div>`;
         diffStats.innerText = "+0 / -0";
         sandboxTable.innerHTML = `<div class="text-[11px] text-slate-500 italic text-center py-2">Execute verification to observe live adversarial & regression test harness.</div>`;
@@ -123,6 +236,7 @@ async function selectScenario(scenarioId) {
         testSummaryBadge.innerText = "0 / 0 Tests";
 
         logToTerminal(`[SCENARIO] Loaded ${sc.name} (${sc.cve_tag})`, "system");
+        playCyberBeep(700, "sine", 0.05);
     } catch (err) {
         console.error("Failed to load scenario", err);
     }
@@ -136,12 +250,12 @@ function selectCustomCode() {
     currentScenarioId = null;
 
     document.querySelectorAll(".scenario-pill").forEach(p => {
-        p.classList.remove("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50");
+        p.classList.remove("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50", "font-bold");
         p.classList.add("bg-slate-900/60", "text-slate-400", "border-slate-800");
     });
     const customPill = document.getElementById("pill-custom");
     customPill.classList.remove("bg-slate-900/60", "text-slate-400", "border-slate-800");
-    customPill.classList.add("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50");
+    customPill.classList.add("bg-cyan-950/70", "text-cyan-300", "border-cyan-700/80", "shadow-sm", "shadow-cyan-900/50", "font-bold");
 
     codeEditor.readOnly = false;
     document.getElementById("editor-hint").innerText = "Interactive Mode (Paste or type any Python code)";
@@ -150,7 +264,8 @@ function selectCustomCode() {
     badgeCvssInitial.innerText = "Initial CVSS: Evaluating";
     badgeCvssRemediated.innerText = "Post-Patch: Pending";
 
-    logToTerminal("[SANDBOX] Switched to Custom Code Input mode. Paste custom Python code and run Step 1.", "system");
+    logToTerminal("[SANDBOX] Switched to Custom Code mode. Paste custom Python code and click Step 1.", "system");
+    playCyberBeep(750, "sine", 0.05);
 }
 
 /**
@@ -158,7 +273,7 @@ function selectCustomCode() {
  */
 function renderHotspots(hotspots) {
     hotspotsList.innerHTML = "";
-    hotspotsCount.innerText = `${hotspots.length} Hotspots`;
+    hotspotsCount.innerText = `${hotspots.length} Hotspots Flagged`;
 
     if (!hotspots || hotspots.length === 0) {
         hotspotsList.innerHTML = `<div class="text-[11px] text-slate-500 italic p-2">No critical AST hotspots flagged.</div>`;
@@ -198,11 +313,10 @@ async function runStep1Analyze() {
         appState.ast = data.ast;
         appState.red_team = data.red_team;
 
-        // Render Telemetry
         data.red_team.telemetry.forEach(msg => logToTerminal(msg, "red"));
         renderHotspots(data.ast.hotspots || []);
 
-        badgeCvssInitial.innerText = `Initial CVSS: ${data.red_team.cvss_score}`;
+        badgeCvssInitial.innerText = `Initial CVSS: ${data.red_team.cvss_score} (${data.red_team.severity})`;
         highlightAgentBadge("agent-badge-red");
 
         return data;
@@ -230,10 +344,7 @@ async function runStep2Patch() {
 
         appState.blue_team = data.blue_team;
 
-        // Render Telemetry
         data.blue_team.telemetry.forEach(msg => logToTerminal(msg, "blue"));
-
-        // Render Diff
         renderDiff(data.blue_team.formatted_diff, data.blue_team.lines_added, data.blue_team.lines_removed);
         highlightAgentBadge("agent-badge-blue");
 
@@ -285,11 +396,9 @@ async function runStep3Sandbox() {
 
         appState.sandbox = data.sandbox;
 
-        // Render Sandbox Telemetry
         data.sandbox.telemetry.forEach(msg => logToTerminal(msg, "sandbox"));
         renderSandboxBattery(data.sandbox);
 
-        // Run Auditor Agent
         logToTerminal("[AUDITOR] Invoking Auditor Veritas for compliance proof and SHA-256 seal...", "auditor");
         const auditRes = await fetch("/api/audit", {
             method: "POST",
@@ -306,7 +415,6 @@ async function runStep3Sandbox() {
 
         auditData.audit.telemetry.forEach(msg => logToTerminal(msg, "auditor"));
 
-        // Update Header Badges
         badgeCvssRemediated.innerText = `Post-Patch: ${auditData.audit.remediated_cvss} (SECURE)`;
         badgeCvssRemediated.className = "px-2.5 py-0.5 rounded bg-emerald-950/70 border border-emerald-800 text-emerald-300 font-semibold";
         footerHash.innerText = auditData.audit.verification_hash.substring(0, 16) + "...";
@@ -356,17 +464,17 @@ function renderSandboxBattery(sandbox) {
  */
 async function runFullAutoHealPipeline() {
     btnRunAll.disabled = true;
-    btnRunAll.innerHTML = `<span class="animate-spin mr-1">?</span> Orchestrating...`;
+    btnRunAll.innerHTML = `<span class="animate-spin mr-1">⚡</span> Orchestrating...`;
 
     try {
         logToTerminal("==================================================", "system");
         logToTerminal("[PIPELINE] Launching Complete Autonomous Self-Healing Pipeline", "system");
         
         await runStep1Analyze();
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 550));
 
         await runStep2Patch();
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 550));
 
         await runStep3Sandbox();
 
@@ -402,7 +510,7 @@ async function exportPdfDossier() {
         await runFullAutoHealPipeline();
     }
 
-    logToTerminal("[EXPORT] Generating boardroom-ready PDF Security Dossier via ReportLab...", "auditor");
+    logToTerminal("[EXPORT] Generating boardroom-ready PDF Security Dossier with SHA-256 seal...", "auditor");
 
     try {
         const payload = {

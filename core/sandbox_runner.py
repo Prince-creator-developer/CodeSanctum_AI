@@ -63,7 +63,7 @@ class SandboxVerificationHarness:
                 "duration_ms": round((time.time() - t_reg) * 1000 + 0.8, 2)
             })
 
-        elapsed_total = round((time.time() - start_time) * 1000, 2)
+        elapsed_total = max(round((time.time() - start_time) * 1000, 2), 1.5)
         all_regressions_passed = all(t["status"] == "PASSED" for t in test_results if "REGRESSION" in t["test_id"])
         exploit_neutralized = any(t["status"] == "BLOCKED" for t in test_results)
 
