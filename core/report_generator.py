@@ -129,15 +129,16 @@ class PDFReportGenerator:
         elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#0284c7'), spaceBefore=6, spaceAfter=8))
 
         initial_cvss = str(red_team_data.get('cvss_score', '9.8'))
-        cwe_label = str(scenario_data.get('cwe', 'CWE-89'))
-        cve_tag = str(scenario_data.get('cve_tag', 'CVE-2026-SIM'))
+        cwe_label = str(scenario_data.get('cwe') or red_team_data.get('cwe') or 'CWE-CUSTOM')
+        name_label = str(scenario_data.get('name') or red_team_data.get('exploit_surface') or 'Custom Code Security Analysis')
+        cve_tag = str(scenario_data.get('cve_tag') or red_team_data.get('cve_tag') or 'CVE-2026-CUSTOM')
         verdict = str(auditor_data.get('verdict', 'CERTIFIED SECURE'))
         hash_seal = str(auditor_data.get('verification_hash', 'N/A'))[:24] + "..."
 
         metrics_data = [
             [
                 Paragraph("<b>Target Vulnerability</b>", body_style),
-                Paragraph(f"<b>{cwe_label}</b>: {scenario_data.get('name', 'Direct SQL Injection')}", body_style),
+                Paragraph(f"<b>{cwe_label}</b>: {name_label}", body_style),
                 Paragraph("<b>Initial CVSS</b>", body_style),
                 Paragraph(f"<font color='#dc2626'><b>{initial_cvss} (CRITICAL)</b></font>", body_style)
             ],
@@ -268,8 +269,8 @@ class PDFReportGenerator:
         output_path: str = None
     ) -> bytes:
         """Pure-Python standard PDF 1.4 generator with zero external C-library dependencies."""
-        cwe = scenario_data.get('cwe', 'CWE-89')
-        name = scenario_data.get('name', 'SQL Injection')
+        cwe = scenario_data.get('cwe') or red_team_data.get('cwe') or 'CWE-CUSTOM'
+        name = scenario_data.get('name') or red_team_data.get('exploit_surface') or 'Custom Code Target Analysis'
         initial_cvss = red_team_data.get('cvss_score', 9.8)
         sha_hash = auditor_data.get('verification_hash', 'N/A')
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S UTC')
